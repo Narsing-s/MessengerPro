@@ -33,10 +33,9 @@ jobs:
         working-directory: apps/web
         run: npm install
 
-      # The dashboard previously called useMemo conditionally after the login
-      # early-return. React then crashed on the first authenticated render.
-      # Convert those two derived values to ordinary calculations for the
-      # static demo build. This does not change the UI or authentication flow.
+      # Keep the source UI unchanged while fixing the conditional-hook crash
+      # in the static demo bundle. React hooks must not be called only after
+      # the login early-return.
       - name: Fix authenticated dashboard render
         working-directory: apps/web
         run: |
@@ -57,9 +56,6 @@ jobs:
           GITHUB_PAGES: true
         run: npm run build
 
-      # GitHub Pages serves 404.html for any URL it cannot resolve.
-      # Use the exported app shell there so accidental client-side navigation
-      # or a stale URL never strands the SPA on a GitHub 404 page.
       - name: Configure SPA fallback
         run: cp apps/web/out/index.html apps/web/out/404.html
 
@@ -67,7 +63,74 @@ jobs:
         run: |
           test -f apps/web/out/index.html
           test -f apps/web/out/404.html
+          grep -q "Global" apps/web/out/index.html
           echo "GitHub Pages SPA output verified"
+
+      # Browser smoke coverage for the operations that previously regressed:
+      # registration -> dashboard, reload/session restore, login, forgot/reset
+      # password and the primary messenger controls. This runs against the
+      # exact static bundle that is deployed to GitHub Pages.
+      - name: Install Chromium for browser smoke tests
+        run: npx --yes playwright@1.55.0 install --with-deps chromium
+
+      - name: Start static site
+        working-directory: apps/web
+        run: npx --yes serve@14 out -l 4173 > /tmp/messengerpro-server.log 2>&1 &
+
+      - name: Run browser smoke tests
+        run: |
+          cat > /tmp/messengerpro-smoke.spec.mjs <<'EOF'
+          import { test, expect } from 'playwright/test';
+
+          const base = 'http://127.0.0.1:4173';
+
+          test('registration, dashboard render, reload session and primary controls', async ({ page }) => {
+            await page.goto(base);
+            await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
+            await page.getByRole('button', { name: /Create Free Account/i }).click();
+            await expect(page.getByRole('heading', { name: 'Create your account' })).toBeVisible();
+            await page.getByPlaceholder('Your full name').fill('Test User');
+            await page.getByPlaceholder('Choose a username').fill('testuser');
+            await page.getByPlaceholder('you@example.com').fill('testuser@example.com');
+            await page.getByPlaceholder('10-digit mobile number').fill('9876543210');
+            await page.getByPlaceholder('Minimum 8 characters').first().fill('TestPass123');
+            await page.getByPlaceholder('Repeat your password').fill('TestPass123');
+            await page.getByRole('button', { name: 'Create Account' }).click();
+            await expect(page.getByText('Connect · Chat · Share · Do More')).toBeVisible();
+            await page.reload();
+            await expect(page.getByText('Connect · Chat · Share · Do More')).toBeVisible();
+            await expect(page.getByText('Your chats will appear here')).toBeVisible();
+            for (const label of ['Chats', 'Groups', 'Channels', 'Contacts', 'Calls', 'Meetings', 'AI Assistant', 'Mini Apps', 'Settings']) {
+              await expect(page.getByRole('button', { name: new RegExp(label, 'i') }).first()).toBeVisible();
+            }
+          });
+
+          test('forgot password and reset flow', async ({ page }) => {
+            await page.goto(base);
+            await page.evaluate(() => { localStorage.clear(); });
+            await page.reload();
+            await page.getByRole('button', { name: /Create Free Account/i }).click();
+            await page.getByPlaceholder('Your full name').fill('Reset User');
+            await page.getByPlaceholder('Choose a username').fill('resetuser');
+            await page.getByPlaceholder('you@example.com').fill('resetuser@example.com');
+            await page.getByPlaceholder('10-digit mobile number').fill('9123456780');
+            await page.getByPlaceholder('Minimum 8 characters').first().fill('OldPass123');
+            await page.getByPlaceholder('Repeat your password').fill('OldPass123');
+            await page.getByRole('button', { name: 'Create Account' }).click();
+            await expect(page.getByText('Your chats will appear here')).toBeVisible();
+            await page.evaluate(() => localStorage.removeItem('messengerpro.session'));
+            await page.reload();
+            await page.getByRole('button', { name: /Forgot password/i }).click();
+            await page.getByPlaceholder('Enter your account detail').fill('resetuser@example.com');
+            await page.getByRole('button', { name: /Verify & Continue/i }).click();
+            await expect(page.getByRole('heading', { name: 'Choose a new password' })).toBeVisible();
+            await page.getByPlaceholder('Minimum 8 characters').fill('NewPass123');
+            await page.getByPlaceholder('Repeat new password').fill('NewPass123');
+            await page.getByRole('button', { name: 'Reset Password' }).click();
+            await expect(page.getByText('Password reset successfully.')).toBeVisible();
+          });
+          EOF
+          npx --yes playwright@1.55.0 test /tmp/messengerpro-smoke.spec.mjs --workers=1
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
