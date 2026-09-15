@@ -37,10 +37,11 @@ login_replacement = r'''async function submitLogin() {
     if (!account) return setNotice('Invalid credentials. Check your details or use Forgot password.'); localStorage.setItem('messengerpro.account', JSON.stringify(account)); localStorage.setItem('messengerpro.session', 'true'); onLogin(account);
   }
 '''
-start = s.find('function submitLogin() {')
-end = s.find('function createAccount() {', start)
-if start < 0 or end < 0: raise SystemExit('submitLogin boundaries not found')
-s = s[:start] + login_replacement + s[end:]
+# Match the complete function prefix so repeated patch runs are idempotent.
+login_match = re.search(r'(?:async\s+)*function submitLogin\(\) \{', s)
+end = s.find('function createAccount() {', login_match.end() if login_match else 0)
+if not login_match or end < 0: raise SystemExit('submitLogin boundaries not found')
+s = s[:login_match.start()] + login_replacement + s[end:]
 
 register_replacement = r'''async function createAccount() {
     if (!name.trim() || !username.trim() || !email.trim() || !phone.trim() || !password || !confirmPassword) return setNotice('Please complete all required details.');
@@ -54,13 +55,13 @@ register_replacement = r'''async function createAccount() {
       if (response.ok) { const data = await response.json(); const created: Account = { ...data.account, password }; const existing = getStoredAccounts().filter((a: Account) => a.username.toLowerCase() !== created.username.toLowerCase()); localStorage.setItem('messengerpro.accounts', JSON.stringify([...existing, created])); localStorage.setItem('messengerpro.account', JSON.stringify(created)); localStorage.setItem('messengerpro.session', 'true'); setNotice('Account created successfully. Opening your Messenger workspace…'); setTimeout(() => onLogin(created), 250); return; }
       const data = await response.json().catch(() => ({})); if (response.status !== 404) return setNotice(data.error || 'Unable to create account.');
     } catch {}
-    const accounts = getStoredAccounts(); if (accounts.some((a: Account) => a.username.toLowerCase() === account.username.toLowerCase())) return setNotice('That username is already in use.'); if (accounts.some((a: Account) => a.email.toLowerCase() === account.email.toLowerCase())) return setNotice('That email is already in use.'); if (accounts.some((a: Account) => a.phone === account.phone)) return setNotice('That mobile number is already in use.'); localStorage.setItem('messengerpro.accounts', JSON.stringify([...accounts, account])); localStorage.setItem('messengerpro.account', JSON.stringify(account)); localStorage.setItem('messengerpro.session', 'true'); setNotice('Account created successfully. Opening your Messenger workspace…'); setTimeout(() => onLogin(account), 500);
+    const accounts = getStoredAccounts(); if (accounts.some((a: Account) => a.username.toLowerCase() === account.username.toLowerCase())) return setNotice('That username is already in use.'); if (accounts.some((a: Account) => String(a.email).toLowerCase() === account.email.toLowerCase())) return setNotice('That email is already in use.'); if (accounts.some((a: Account) => a.phone === account.phone)) return setNotice('That mobile number is already in use.'); localStorage.setItem('messengerpro.accounts', JSON.stringify([...accounts, account])); localStorage.setItem('messengerpro.account', JSON.stringify(account)); localStorage.setItem('messengerpro.session', 'true'); setNotice('Account created successfully. Opening your Messenger workspace…'); setTimeout(() => onLogin(account), 500);
   }
 '''
-start = s.find('function createAccount() {')
-end = s.find('function requestReset() {', start)
-if start < 0 or end < 0: raise SystemExit('createAccount boundaries not found')
-s = s[:start] + register_replacement + s[end:]
+register_match = re.search(r'(?:async\s+)*function createAccount\(\) \{', s)
+end = s.find('function requestReset() {', register_match.end() if register_match else 0)
+if not register_match or end < 0: raise SystemExit('createAccount boundaries not found')
+s = s[:register_match.start()] + register_replacement + s[end:]
 
 state_marker = "const [loggedIn, setLoggedIn] = useState(false); const [account, setAccount] = useState<Account | null>(null);"
 if 'const [directory, setDirectory]' not in s:
@@ -84,7 +85,6 @@ old_ws = "const protocol = location.protocol === 'https:' ? 'wss' : 'ws'; try { 
 new_ws = "const apiBase = getApiBase(); const wsUrl = apiBase ? apiBase.replace(/^http/, 'ws') + `/ws?userId=${encodeURIComponent(userId)}` : `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?userId=${encodeURIComponent(userId)}`; try { const ws = new WebSocket(wsUrl);"
 s = s.replace(old_ws, new_ws, 1)
 
-# Keep the generated client strict-type-safe when older demo code contains loosely typed callback values.
 s = s.replace('c.email.toLowerCase()', 'String(c.email).toLowerCase()')
 s = s.replace('a.email.toLowerCase()', 'String(a.email).toLowerCase()')
 p.write_text(s)
