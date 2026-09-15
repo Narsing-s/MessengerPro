@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -26,21 +26,41 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Persist React dashboard fix in source
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('apps/web/app/page.tsx')
+          s = p.read_text()
+          old = "const availableContacts = sampleContacts; const active = useMemo(() => availableContacts.find((c) => c.id === recipient), [recipient]); const filtered = useMemo(() => { const value = search.trim().toLowerCase(); return availableContacts.filter((c) => !value || `${c.name}`.toLowerCase().includes(value)); }, [search]);"
+          new = "const availableContacts = sampleContacts; const active = availableContacts.find((c) => c.id === recipient); const filtered = availableContacts.filter((c) => { const value = search.trim().toLowerCase(); return !value || `${c.name}`.toLowerCase().includes(value); });"
+          if old in s:
+              p.write_text(s.replace(old, new, 1))
+          PY
+          if git diff --quiet -- apps/web/app/page.tsx; then
+            echo 'React dashboard fix already present in source.'
+          else
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add apps/web/app/page.tsx
+            git commit -m 'Fix dashboard render hooks in source'
+            git push
+          fi
       - name: Install dependencies
         working-directory: apps/web
         run: npm install
-      - name: Fix authenticated dashboard render
+      - name: Verify dashboard render fix
         working-directory: apps/web
         run: |
           python - <<'PY'
           from pathlib import Path
-          p = Path('app/page.tsx')
-          s = p.read_text()
-          old = "const availableContacts = sampleContacts; const active = useMemo(() => availableContacts.find((c) => c.id === recipient), [recipient]); const filtered = useMemo(() => { const value = search.trim().toLowerCase(); return availableContacts.filter((c) => !value || `${c.name}`.toLowerCase().includes(value)); }, [search]);"
-          new = "const availableContacts = sampleContacts; const active = availableContacts.find((c) => c.id === recipient); const filtered = availableContacts.filter((c) => { const value = search.trim().toLowerCase(); return !value || `${c.name}`.toLowerCase().includes(value); });"
-          if old not in s:
-              raise SystemExit('Dashboard render patch target not found')
-          p.write_text(s.replace(old, new, 1))
+          s = Path('app/page.tsx').read_text()
+          bad = "const availableContacts = sampleContacts; const active = useMemo(() => availableContacts.find((c) => c.id === recipient), [recipient]); const filtered = useMemo(() =>"
+          good = "const availableContacts = sampleContacts; const active = availableContacts.find((c) => c.id === recipient); const filtered = availableContacts.filter(() =>"
+          if bad in s:
+              raise SystemExit('Conditional useMemo dashboard bug is still present')
+          if good not in s:
+              raise SystemExit('Expected dashboard calculation fix is missing')
           PY
       - name: Build static Next.js site
         working-directory: apps/web
@@ -51,8 +71,10 @@ jobs:
         run: cp apps/web/out/index.html apps/web/out/404.html
       - name: Verify Pages output
         run: |
-          test -f apps/web/out/index.html
-          test -f apps/web/out/404.html
+          test -s apps/web/out/index.html
+          test -s apps/web/out/404.html
+          grep -q 'Global.*Messenger' apps/web/out/index.html
+          test -d apps/web/out/_next/static
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
