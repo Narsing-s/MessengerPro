@@ -37,7 +37,6 @@ login_replacement = r'''async function submitLogin() {
     if (!account) return setNotice('Invalid credentials. Check your details or use Forgot password.'); localStorage.setItem('messengerpro.account', JSON.stringify(account)); localStorage.setItem('messengerpro.session', 'true'); onLogin(account);
   }
 '''
-# Match the complete function prefix so repeated patch runs are idempotent.
 login_match = re.search(r'(?:async\s+)*function submitLogin\(\) \{', s)
 end = s.find('function createAccount() {', login_match.end() if login_match else 0)
 if not login_match or end < 0: raise SystemExit('submitLogin boundaries not found')
@@ -87,4 +86,8 @@ s = s.replace(old_ws, new_ws, 1)
 
 s = s.replace('c.email.toLowerCase()', 'String(c.email).toLowerCase()')
 s = s.replace('a.email.toLowerCase()', 'String(a.email).toLowerCase()')
+
+# Final safety normalization: repeated runs can never leave "async async ... function" behind.
+s = re.sub(r'\b(?:async\s+){2,}function\s+(submitLogin|createAccount)\s*\(', r'async function \1(', s)
+
 p.write_text(s)
