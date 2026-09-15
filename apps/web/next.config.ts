@@ -1,3 +1,11 @@
 import type { NextConfig } from 'next';
-const nextConfig: NextConfig = { output: 'standalone' };
+
+const githubPages = process.env.GITHUB_PAGES === 'true';
+
+const nextConfig: NextConfig = {
+  output: githubPages ? 'export' : 'standalone',
+  basePath: githubPages ? '/MessengerPro' : '',
+  images: { unoptimized: true },
+};
+
 export default nextConfig;
