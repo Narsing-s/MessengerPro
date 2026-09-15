@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 type Message = { id?: number; sender_id: string; recipient_id: string; body: string; created_at?: string };
 type Conversation = { id: string; name: string; preview: string; time: string; online: boolean; initials: string; color: string; unread?: number };
+type Account = { name: string; username: string; email: string; phone: string; password: string };
 
 const conversations: Conversation[] = [
   { id: 'maya', name: 'Maya Chen', preview: 'The new design looks amazing ✨', time: '10:42', online: true, initials: 'MC', color: 'blue', unread: 3 },
@@ -23,46 +24,123 @@ function Avatar({ item, size = '' }: { item: Pick<Conversation, 'initials' | 'co
   return <div className={`avatar avatar-${item.color} ${size}`}>{item.initials}</div>;
 }
 
-function Login({ onLogin }: { onLogin: () => void }) {
+function Modal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
+  return <div className="gm-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}><div className="gm-modal"><div className="gm-modal-head"><strong>{title}</strong><button onClick={onClose}>×</button></div>{children}</div></div>;
+}
+
+function Login({ onLogin }: { onLogin: (account: Account) => void }) {
   const [mode, setMode] = useState<'phone' | 'email' | 'username'>('phone');
   const [value, setValue] = useState('');
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(true);
-  return (
-    <main className="auth-shell">
-      <section className="auth-showcase">
-        <div className="auth-brand"><div className="brand-logo">✦</div><div><b>Global</b> Messenger<small>Connect · Chat · Share · Do More</small></div></div>
-        <div className="auth-hero"><span>More than just a messenger</span><h1>Your world. Your people. Your everything.</h1><p>A secure communication workspace for web, desktop and mobile.</p></div>
-        <div className="feature-grid">
-          {[
-            ['⌁','End-to-End Encrypted','Your chats, your privacy.'],['▣','Multi-Device Sync','Chat anywhere, anytime.'],['☎','Voice & Video Calls','HD calls and screen sharing.'],['✦','AI Assistant','Search, summarize, translate.'],['♙','Bots & Mini Apps','Do more inside chat.'],['▧','File Sharing','All formats, large files.'],
-          ].map(([icon,title,desc]) => <div className="feature-item" key={title}><i>{icon}</i><div><strong>{title}</strong><span>{desc}</span></div></div>)}
-        </div>
-        <div className="globe-card"><div className="globe-ring">◎</div><div><b>Built for everyone</b><span>Web · Android · iOS · Windows · Mac</span></div></div>
-      </section>
-      <section className="auth-card-wrap">
-        <div className="auth-card">
-          <div className="auth-card-head"><div className="mini-logo">✦</div><h2>Welcome back</h2><p>Sign in to continue to Global Messenger</p></div>
-          <div className="auth-tabs">{(['phone','email','username'] as const).map((item) => <button key={item} className={mode === item ? 'active' : ''} onClick={() => setMode(item)}>{item === 'phone' ? '▣ Phone' : item === 'email' ? '✉ Email' : '♙ Username'}</button>)}</div>
-          <label>{mode === 'phone' ? 'Mobile number' : mode === 'email' ? 'Email address' : 'Username'}</label>
-          <div className="auth-input">{mode === 'phone' && <span>+91 ▾</span>}<input value={value} onChange={(e) => setValue(e.target.value)} placeholder={mode === 'phone' ? 'Enter your mobile number' : mode === 'email' ? 'you@example.com' : 'Enter username'} /></div>
-          <label>Password</label>
-          <div className="auth-input"><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password"/><span>◉</span></div>
-          <div className="auth-options"><button className="check" onClick={() => setRemember(!remember)}>{remember ? '☑' : '☐'} Remember me</button><button>Forgot password?</button></div>
-          <button className="login-button" onClick={onLogin}>Login</button>
-          <div className="auth-or"><span>or</span></div>
-          <div className="social-row"><button>G <span>Google</span></button><button>● <span>Apple</span></button><button>⊞ <span>Microsoft</span></button></div>
-          <p className="auth-create">Don't have an account? <button onClick={onLogin}>Create Free Account</button></p>
-          <button className="demo-button" onClick={onLogin}>Continue with Demo Workspace</button>
-          <div className="security-note">🔒 Private by design · Self-hosted ready · Secure sessions</div>
-        </div>
-      </section>
-    </main>
-  );
+  const [authView, setAuthView] = useState<'login' | 'register' | 'forgot' | 'reset'>('login');
+  const [name, setName] = useState('');
+  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [notice, setNotice] = useState('');
+  const [resetPassword, setResetPassword] = useState('');
+  const [resetConfirm, setResetConfirm] = useState('');
+
+  const getAccount = (): Account | null => {
+    try { return JSON.parse(localStorage.getItem('messengerpro.account') || 'null'); } catch { return null; }
+  };
+
+  function submitLogin() {
+    const account = getAccount();
+    if (!value.trim() || !password) return setNotice('Enter your login details.');
+    if (!account) return setNotice('No account found. Select Create Free Account first.');
+    const matches = mode === 'email' ? account.email.toLowerCase() === value.trim().toLowerCase() : mode === 'username' ? account.username.toLowerCase() === value.trim().toLowerCase() : account.phone === value.replace(/\D/g, '');
+    if (!matches || account.password !== password) return setNotice('Invalid credentials. Check your details or use Forgot password.');
+    if (remember) localStorage.setItem('messengerpro.remember', 'true');
+    onLogin(account);
+  }
+
+  function createAccount() {
+    if (!name.trim() || !username.trim() || !email.trim() || !phone.trim() || !password || !confirmPassword) return setNotice('Please complete all required details.');
+    if (!/^\S+@\S+\.\S+$/.test(email)) return setNotice('Enter a valid email address.');
+    if (phone.replace(/\D/g, '').length < 10) return setNotice('Enter a valid 10-digit mobile number.');
+    if (password.length < 8) return setNotice('Password must contain at least 8 characters.');
+    if (password !== confirmPassword) return setNotice('Passwords do not match.');
+    const account = { name: name.trim(), username: username.trim(), email: email.trim(), phone: phone.replace(/\D/g, '').slice(-10), password };
+    localStorage.setItem('messengerpro.account', JSON.stringify(account));
+    localStorage.setItem('messengerpro.session', 'true');
+    setNotice('Account created successfully. Opening your Messenger workspace…');
+    setTimeout(() => onLogin(account), 500);
+  }
+
+  function requestReset() {
+    const account = getAccount();
+    if (!value.trim()) return setNotice('Enter the email address, username or mobile number on your account.');
+    const key = value.trim().toLowerCase();
+    const matches = account && (account.email.toLowerCase() === key || account.username.toLowerCase() === key || account.phone === value.replace(/\D/g, ''));
+    if (!matches) return setNotice('We could not find an account with those details.');
+    localStorage.setItem('messengerpro.reset.pending', 'true');
+    setNotice('Identity verified for this demo. Create a new password below.');
+    setAuthView('reset');
+  }
+
+  function completeReset() {
+    const account = getAccount();
+    if (!account) return setNotice('No account is available to reset.');
+    if (resetPassword.length < 8) return setNotice('New password must contain at least 8 characters.');
+    if (resetPassword !== resetConfirm) return setNotice('Passwords do not match.');
+    localStorage.setItem('messengerpro.account', JSON.stringify({ ...account, password: resetPassword }));
+    localStorage.removeItem('messengerpro.reset.pending');
+    setPassword(''); setResetPassword(''); setResetConfirm(''); setNotice('Password reset successfully. You can now sign in.'); setAuthView('login');
+  }
+
+  const title = authView === 'register' ? 'Create your account' : authView === 'forgot' ? 'Reset your password' : authView === 'reset' ? 'Choose a new password' : 'Welcome back';
+  const subtitle = authView === 'register' ? 'Set up your secure Global Messenger account' : authView === 'forgot' ? 'We will verify your account before allowing a reset' : authView === 'reset' ? 'Use a strong password you will remember' : 'Sign in to continue to Global Messenger';
+
+  return <main className="auth-shell">
+    <section className="auth-showcase">
+      <div className="auth-brand"><div className="brand-logo">✦</div><div><b>Global</b> Messenger<small>Connect · Chat · Share · Do More</small></div></div>
+      <div className="auth-hero"><span>More than just a messenger</span><h1>Your world. Your people. Your everything.</h1><p>A secure communication workspace for web, desktop and mobile.</p></div>
+      <div className="feature-grid">{[['⌁','End-to-End Encrypted','Your chats, your privacy.'],['▣','Multi-Device Sync','Chat anywhere, anytime.'],['☎','Voice & Video Calls','HD calls and screen sharing.'],['✦','AI Assistant','Search, summarize, translate.'],['♙','Bots & Mini Apps','Do more inside chat.'],['▧','File Sharing','All formats, large files.']].map(([icon,title,desc]) => <div className="feature-item" key={title}><i>{icon}</i><div><strong>{title}</strong><span>{desc}</span></div></div>)}</div>
+      <div className="globe-card"><div className="globe-ring">◎</div><div><b>Built for everyone</b><span>Web · Android · iOS · Windows · Mac</span></div></div>
+    </section>
+    <section className="auth-card-wrap"><div className="auth-card">
+      <div className="auth-card-head"><div className="mini-logo">✦</div><h2>{title}</h2><p>{subtitle}</p></div>
+      {authView === 'login' && <>
+        <div className="auth-tabs">{(['phone','email','username'] as const).map((item) => <button key={item} className={mode === item ? 'active' : ''} onClick={() => { setMode(item); setNotice(''); }}>{item === 'phone' ? '▣ Phone' : item === 'email' ? '✉ Email' : '♙ Username'}</button>)}</div>
+        <label>{mode === 'phone' ? 'Mobile number' : mode === 'email' ? 'Email address' : 'Username'}</label>
+        <div className="auth-input">{mode === 'phone' && <span>+91 ▾</span>}<input value={value} onChange={(e) => setValue(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submitLogin()} placeholder={mode === 'phone' ? 'Enter your mobile number' : mode === 'email' ? 'you@example.com' : 'Enter username'} /></div>
+        <label>Password</label><div className="auth-input"><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submitLogin()} placeholder="Password"/><span>◉</span></div>
+        <div className="auth-options"><button className="check" onClick={() => setRemember(!remember)}>{remember ? '☑' : '☐'} Remember me</button><button onClick={() => { setNotice(''); setAuthView('forgot'); }}>Forgot password?</button></div>
+        <button className="login-button" onClick={submitLogin}>Login</button><div className="auth-or"><span>or</span></div>
+        <div className="social-row"><button onClick={() => setNotice('Google sign-in is ready for OAuth configuration; use account login for this test build.')}>G <span>Google</span></button><button onClick={() => setNotice('Apple sign-in is ready for OAuth configuration; use account login for this test build.')}>● <span>Apple</span></button><button onClick={() => setNotice('Microsoft sign-in is ready for OAuth configuration; use account login for this test build.')}>⊞ <span>Microsoft</span></button></div>
+        <p className="auth-create">Don't have an account? <button onClick={() => { setNotice(''); setAuthView('register'); }}>Create Free Account</button></p>
+        <button className="demo-button" onClick={() => onLogin({ name: 'Demo User', username: 'demo', email: 'demo@example.com', phone: '9999999999', password: 'demo' })}>Continue with Demo Workspace</button>
+      </>}
+      {authView === 'register' && <>
+        <label>Full name *</label><div className="auth-input"><input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your full name" /></div>
+        <label>Username *</label><div className="auth-input"><input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Choose a username" /></div>
+        <label>Email address *</label><div className="auth-input"><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" /></div>
+        <label>Mobile number *</label><div className="auth-input"><span>+91</span><input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="10-digit mobile number" /></div>
+        <label>Password *</label><div className="auth-input"><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Minimum 8 characters" /></div>
+        <label>Confirm password *</label><div className="auth-input"><input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Repeat your password" /></div>
+        <button className="login-button" style={{marginTop:16}} onClick={createAccount}>Create Account</button><p className="auth-create">Already have an account? <button onClick={() => { setNotice(''); setAuthView('login'); }}>Back to Login</button></p>
+      </>}
+      {authView === 'forgot' && <>
+        <label>Email / Username / Mobile</label><div className="auth-input"><input value={value} onChange={(e) => setValue(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && requestReset()} placeholder="Enter your account detail" /></div>
+        <button className="login-button" style={{marginTop:16}} onClick={requestReset}>Verify & Continue</button><p className="auth-create">Remembered your password? <button onClick={() => { setNotice(''); setAuthView('login'); }}>Back to Login</button></p>
+      </>}
+      {authView === 'reset' && <>
+        <label>New password</label><div className="auth-input"><input type="password" value={resetPassword} onChange={(e) => setResetPassword(e.target.value)} placeholder="Minimum 8 characters" /></div>
+        <label>Confirm new password</label><div className="auth-input"><input type="password" value={resetConfirm} onChange={(e) => setResetConfirm(e.target.value)} placeholder="Repeat new password" /></div>
+        <button className="login-button" style={{marginTop:16}} onClick={completeReset}>Reset Password</button>
+      </>}
+      {notice && <div className="gm-notice">{notice}</div>}
+      <div className="security-note">🔒 Private by design · Self-hosted ready · Secure sessions</div>
+    </div></section>
+  </main>;
 }
 
 export default function Home() {
   const [loggedIn, setLoggedIn] = useState(false);
+  const [account, setAccount] = useState<Account | null>(null);
   const [userId] = useState('you');
   const [recipient, setRecipient] = useState('maya');
   const [text, setText] = useState('');
@@ -72,67 +150,63 @@ export default function Home() {
   const [activeNav, setActiveNav] = useState('chats');
   const [showDetails, setShowDetails] = useState(true);
   const [muted, setMuted] = useState(false);
+  const [modal, setModal] = useState<'new'|'call'|'help'|'menu'|'action'|null>(null);
+  const [toast, setToast] = useState('');
+  const [newTarget, setNewTarget] = useState('');
+  const [callType, setCallType] = useState('Voice');
+  const fileInput = useRef<HTMLInputElement | null>(null);
+  const searchRef = useRef<HTMLInputElement | null>(null);
   const socket = useRef<WebSocket | null>(null);
 
-  const active = useMemo(() => conversations.find((c) => c.id === recipient) ?? conversations[0], [recipient]);
-  const filteredConversations = useMemo(() => {
-    const value = search.trim().toLowerCase();
-    return value ? conversations.filter((c) => `${c.name} ${c.preview}`.toLowerCase().includes(value)) : conversations;
-  }, [search]);
-
+  useEffect(() => { try { if (localStorage.getItem('messengerpro.session') === 'true') { const saved = JSON.parse(localStorage.getItem('messengerpro.account') || 'null'); if (saved) { setAccount(saved); setLoggedIn(true); } } } catch {} }, []);
+  useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(''), 2800); return () => clearTimeout(t); }, [toast]);
+  useEffect(() => { if (!loggedIn) return; const onKey = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); searchRef.current?.focus(); } }; window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey); }, [loggedIn]);
   useEffect(() => {
     if (!loggedIn) return;
     const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-    try {
-      const ws = new WebSocket(`${protocol}://${location.host}/ws?userId=${encodeURIComponent(userId)}`);
-      socket.current = ws;
-      ws.onopen = () => setConnected(true); ws.onclose = () => setConnected(false); ws.onerror = () => setConnected(false);
-      ws.onmessage = (event) => { try { const payload = JSON.parse(event.data); if (payload.type === 'message') setMessages((current) => [...current, payload.message]); } catch {} };
-      return () => ws.close();
-    } catch { setConnected(false); }
+    try { const ws = new WebSocket(`${protocol}://${location.host}/ws?userId=${encodeURIComponent(userId)}`); socket.current = ws; ws.onopen = () => setConnected(true); ws.onclose = () => setConnected(false); ws.onerror = () => setConnected(false); ws.onmessage = (event) => { try { const payload = JSON.parse(event.data); if (payload.type === 'message') setMessages((current) => [...current, payload.message]); } catch {} }; return () => ws.close(); } catch { setConnected(false); }
   }, [loggedIn, userId]);
 
-  if (!loggedIn) return <Login onLogin={() => setLoggedIn(true)} />;
-
+  if (!loggedIn) return <Login onLogin={(a) => { setAccount(a); setLoggedIn(true); localStorage.setItem('messengerpro.session','true'); }} />;
+  const active = useMemo(() => conversations.find((c) => c.id === recipient) ?? conversations[0], [recipient]);
+  const filteredConversations = useMemo(() => { const value = search.trim().toLowerCase(); return value ? conversations.filter((c) => `${c.name} ${c.preview}`.toLowerCase().includes(value)) : conversations; }, [search]);
+  function toastIt(message: string) { setToast(message); }
   function openConversation(id: string) { setRecipient(id); setMessages([]); setActiveNav('chats'); }
-  function send() {
-    const body = text.trim();
-    if (!body) return;
-    if (socket.current?.readyState === WebSocket.OPEN) socket.current.send(JSON.stringify({ type: 'message', to: recipient, body, clientMessageId: crypto.randomUUID() }));
-    setMessages((current) => [...current, { sender_id: userId, recipient_id: recipient, body, created_at: new Date().toISOString() }]);
-    setText('');
-  }
+  function send() { const body = text.trim(); if (!body) return; if (socket.current?.readyState === WebSocket.OPEN) socket.current.send(JSON.stringify({ type: 'message', to: recipient, body, clientMessageId: crypto.randomUUID() })); setMessages((current) => [...current, { sender_id: userId, recipient_id: recipient, body, created_at: new Date().toISOString() }]); setText(''); }
+  function signOut() { localStorage.removeItem('messengerpro.session'); setLoggedIn(false); setAccount(null); setToast('Signed out securely.'); }
 
-  return (
-    <main className="messenger-shell">
-      <aside className="left-rail">
-        <div className="brand-lockup"><div className="brand-logo">✦</div><div><strong>Global</strong> <b>Messenger</b><small>Connect · Chat · Share · Do More</small></div></div>
-        <div className="me-card"><div className="avatar avatar-me">N</div><div className="me-copy"><strong>Narsing</strong><span><i />{connected ? 'Online' : 'Demo / Offline'}</span></div><button className="ghost-icon">⌄</button></div>
-        <nav className="primary-nav" aria-label="Main navigation">
-          {navItems.map(([id, icon, label]) => <button key={id} className={activeNav === id ? 'nav-item active' : 'nav-item'} onClick={() => setActiveNav(id)}><span className="nav-icon">{icon}</span><span>{label}</span>{id === 'chats' && <em>12</em>}</button>)}
-        </nav>
-        <div className="rail-footer"><div className="secure-line"><span>⌁</span><div><strong>Private & secure</strong><small>Self-hosted MessengerPro</small></div></div><button className="help-button">? <span>Help & Support</span></button></div>
-      </aside>
+  return <main className="messenger-shell">
+    <aside className="left-rail">
+      <div className="brand-lockup"><div className="brand-logo">✦</div><div><strong>Global</strong> <b>Messenger</b><small>Connect · Chat · Share · Do More</small></div></div>
+      <div className="me-card"><div className="avatar avatar-me">{account?.name?.[0]?.toUpperCase() || 'N'}</div><div className="me-copy"><strong>{account?.name || 'Narsing'}</strong><span><i />{connected ? 'Online' : 'Demo / Offline'}</span></div><button className="ghost-icon" onClick={() => setModal('menu')}>⌄</button></div>
+      <nav className="primary-nav" aria-label="Main navigation">{navItems.map(([id, icon, label]) => <button key={id} className={activeNav === id ? 'nav-item active' : 'nav-item'} onClick={() => { setActiveNav(id); setModal(null); }}><span className="nav-icon">{icon}</span><span>{label}</span>{id === 'chats' && <em>12</em>}</button>)}</nav>
+      <div className="rail-footer"><div className="secure-line"><span>⌁</span><div><strong>Private & secure</strong><small>Self-hosted MessengerPro</small></div></div><button className="help-button" onClick={() => setModal('help')}>? <span>Help & Support</span></button></div>
+    </aside>
 
-      <section className="conversation-panel">
-        <header className="panel-header"><div><h1>{activeNav === 'chats' ? 'Chats' : navItems.find((n) => n[0] === activeNav)?.[2]}</h1><span>{activeNav === 'chats' ? '12 active conversations' : 'Your workspace'}</span></div><button className="new-chat">＋</button></header>
-        <div className="search-box"><span>⌕</span><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search people, chats, messages..."/><kbd>⌘ K</kbd></div>
-        {activeNav === 'chats' ? <>
-          <div className="chat-tabs"><button className="selected">All <b>12</b></button><button>Unread <b>3</b></button><button>Personal</button><button>Groups</button><button>Channels</button></div>
-          <div className="conversation-list">{filteredConversations.map((c) => <button key={c.id} className={`conversation-card ${c.id === recipient ? 'selected' : ''}`} onClick={() => openConversation(c.id)}><div className="avatar-wrap"><Avatar item={c}/><span className={c.online ? 'online-indicator' : 'online-indicator hidden'}/></div><div className="conversation-content"><div className="conversation-title"><strong>{c.name}</strong><time>{c.time}</time></div><p>{c.preview}</p></div>{c.unread ? <span className="unread-count">{c.unread}</span> : null}</button>)}</div>
-          <div className="pinned-label">Pinned</div><div className="pinned-row"><Avatar item={conversations[4]}/><div><strong>Family Group</strong><span>Mom: Happy Friday! 😊</span></div><time>10:24</time></div><div className="pinned-row"><Avatar item={conversations[2]}/><div><strong>Work Team</strong><span>Meeting at 4 PM</span></div><time>10:12</time></div>
-        </> : <div className="workspace-list"><div className="workspace-hero"><div className="workspace-icon">{navItems.find((n) => n[0] === activeNav)?.[1]}</div><h2>{navItems.find((n) => n[0] === activeNav)?.[2]}</h2><p>This workspace is ready for your real MessengerPro backend. The navigation, controls and visual hierarchy are now consistent across the product.</p></div><button>＋ Create new</button><button>⌕ Explore</button><button>⚙ Manage settings</button></div>}
-      </section>
+    <section className="conversation-panel">
+      <header className="panel-header"><div><h1>{activeNav === 'chats' ? 'Chats' : navItems.find((n) => n[0] === activeNav)?.[2]}</h1><span>{activeNav === 'chats' ? '12 active conversations' : 'Your workspace'}</span></div><button className="new-chat" onClick={() => setModal('new')}>＋</button></header>
+      <div className="search-box"><span>⌕</span><input ref={searchRef} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search people, chats, messages..."/><kbd>⌘ K</kbd></div>
+      {activeNav === 'chats' ? <><div className="chat-tabs"><button className="selected">All <b>12</b></button><button onClick={() => toastIt('Unread filter selected')}>Unread <b>3</b></button><button onClick={() => toastIt('Personal filter selected')}>Personal</button><button onClick={() => setActiveNav('groups')}>Groups</button><button onClick={() => setActiveNav('channels')}>Channels</button></div>
+        <div className="conversation-list">{filteredConversations.map((c) => <button key={c.id} className={`conversation-card ${c.id === recipient ? 'selected' : ''}`} onClick={() => openConversation(c.id)}><div className="avatar-wrap"><Avatar item={c}/><span className={c.online ? 'online-indicator' : 'online-indicator hidden'}/></div><div className="conversation-content"><div className="conversation-title"><strong>{c.name}</strong><time>{c.time}</time></div><p>{c.preview}</p></div>{c.unread ? <span className="unread-count">{c.unread}</span> : null}</button>)}</div>
+        <div className="pinned-label">Pinned</div><button className="pinned-row" onClick={() => openConversation('family')}><Avatar item={conversations[4]}/><div><strong>Family Group</strong><span>Mom: Happy Friday! 😊</span></div><time>10:24</time></button><button className="pinned-row" onClick={() => openConversation('team')}><Avatar item={conversations[2]}/><div><strong>Work Team</strong><span>Meeting at 4 PM</span></div><time>10:12</time></button>
+      </> : <div className="workspace-list"><div className="workspace-hero"><div className="workspace-icon">{navItems.find((n) => n[0] === activeNav)?.[1]}</div><h2>{navItems.find((n) => n[0] === activeNav)?.[2]}</h2><p>This workspace is ready for your real MessengerPro backend. The navigation, controls and visual hierarchy are now consistent across the product.</p></div><button onClick={() => { setModal('new'); }}>＋ Create new</button><button onClick={() => toastIt(`Explore ${navItems.find((n) => n[0] === activeNav)?.[2]}`)}>⌕ Explore</button><button onClick={() => setModal('action')}>⚙ Manage settings</button></div>}
+    </section>
 
-      <section className="chat-panel">
-        <header className="chat-topbar"><div className="chat-user"><Avatar item={active} size="large"/><div><strong>{active.name}</strong><span>{active.online ? '● Active now' : 'Last seen recently'}</span></div></div><div className="chat-tools"><button aria-label="Search">⌕</button><button aria-label="Voice call">☎</button><button aria-label="Video call">▣</button><button aria-label="More">⋮</button></div></header>
-        <div className="chat-content"><div className="chat-date">TODAY</div><div className="welcome-card"><div className="welcome-mark">✦</div><div><strong>Private, realtime conversation</strong><p>Messages, media, files, voice and calls belong in one focused workspace.</p></div></div>{messages.map((m, i) => <div key={`${i}-${m.created_at}`} className={`message-row ${m.sender_id === userId ? 'mine' : ''}`}><div className="message-bubble"><span>{m.body}</span><small>{new Date(m.created_at ?? Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · ✓</small></div></div>)}</div>
-        <div className="composer-status">{connected ? `${active.name} is available` : 'Demo mode · connect MessengerPro server for realtime delivery'}</div>
-        <div className="composer-wrap"><button className="attach-button">＋</button><div className="message-input"><input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && send()} placeholder={`Type a message to ${active.name}...`}/><button>☺</button><button>◉</button></div><button className="send-button" onClick={send} disabled={!text.trim()}>➤</button></div>
-      </section>
+    <section className="chat-panel">
+      <header className="chat-topbar"><div className="chat-user"><Avatar item={active} size="large"/><div><strong>{active.name}</strong><span>{active.online ? '● Active now' : 'Last seen recently'}</span></div></div><div className="chat-tools"><button aria-label="Search" onClick={() => searchRef.current?.focus()}>⌕</button><button aria-label="Voice call" onClick={() => { setCallType('Voice'); setModal('call'); }}>☎</button><button aria-label="Video call" onClick={() => { setCallType('Video'); setModal('call'); }}>▣</button><button aria-label="More" onClick={() => setModal('action')}>⋮</button></div></header>
+      <div className="chat-content"><div className="chat-date">TODAY</div><div className="welcome-card"><div className="welcome-mark">✦</div><div><strong>Private, realtime conversation</strong><p>Messages, media, files, voice and calls belong in one focused workspace.</p></div></div>{messages.map((m, i) => <div key={`${i}-${m.created_at}`} className={`message-row ${m.sender_id === userId ? 'mine' : ''}`}><div className="message-bubble"><span>{m.body}</span><small>{new Date(m.created_at ?? Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · ✓</small></div></div>)}</div>
+      <div className="composer-status">{connected ? `${active.name} is available` : 'Demo mode · connect MessengerPro server for realtime delivery'}</div>
+      <div className="composer-wrap"><button className="attach-button" onClick={() => fileInput.current?.click()}>＋</button><input ref={fileInput} type="file" hidden onChange={(e) => e.target.files?.[0] && toastIt(`${e.target.files[0].name} selected for upload`)} /><div className="message-input"><input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && send()} placeholder={`Type a message to ${active.name}...`}/><button onClick={() => setText((v) => `${v} 😊`)}>☺</button><button onClick={() => toastIt('Voice message recording started')}>◉</button></div><button className="send-button" onClick={send} disabled={!text.trim()}>➤</button></div>
+    </section>
 
-      {showDetails && <aside className="details-panel"><div className="details-header"><strong>Profile & Settings</strong><button onClick={() => setShowDetails(false)}>×</button></div><div className="profile-hero"><Avatar item={active} size="huge"/><span className="profile-online"/><h2>{active.name}</h2><p>{active.online ? 'Online now' : 'MessengerPro user'}</p></div><div className="profile-actions"><button><span>⌕</span>Search</button><button onClick={() => setMuted((v) => !v)}><span>♩</span>{muted ? 'Unmute' : 'Mute'}</button><button><span>▣</span>Files</button></div><div className="detail-section"><h3>Account</h3><button><span>♙</span>Account & profile <b>›</b></button><button><span>🔒</span>Privacy & security <b>›</b></button><button><span>🔔</span>Notifications <b>{muted ? 'Off' : 'On'}</b></button><button><span>◐</span>Appearance <b>Dark</b></button></div><div className="detail-section"><h3>Conversation</h3><button><span>🔐</span>End-to-end encryption <b>On</b></button><button><span>⌁</span>Disappearing messages <b>Off</b></button><button><span>▧</span>Photos, videos & files <b>›</b></button><button><span>◫</span>Keyboard shortcuts <b>›</b></button></div><div className="server-badge"><span>SECURE SERVER</span><strong>MessengerPro</strong><p>Private, realtime and self-hosted.</p><button>Manage connection</button></div></aside>}
-      {!showDetails && <button className="show-details" onClick={() => setShowDetails(true)}>‹</button>}
-    </main>
-  );
+    {showDetails && <aside className="details-panel"><div className="details-header"><strong>Profile & Settings</strong><button onClick={() => setShowDetails(false)}>×</button></div><div className="profile-hero"><Avatar item={active} size="huge"/><span className="profile-online"/><h2>{active.name}</h2><p>{active.online ? 'Online now' : 'MessengerPro user'}</p></div><div className="profile-actions"><button onClick={() => searchRef.current?.focus()}><span>⌕</span>Search</button><button onClick={() => setMuted((v) => !v)}><span>♩</span>{muted ? 'Unmute' : 'Mute'}</button><button onClick={() => toastIt('Files panel opened')}><span>▣</span>Files</button></div><div className="detail-section"><h3>Account</h3><button onClick={() => setModal('action')}><span>♙</span>Account & profile <b>›</b></button><button onClick={() => setModal('action')}><span>🔒</span>Privacy & security <b>›</b></button><button onClick={() => setMuted((v) => !v)}><span>🔔</span>Notifications <b>{muted ? 'Off' : 'On'}</b></button><button onClick={() => toastIt('Appearance is already set to Dark') }><span>◐</span>Appearance <b>Dark</b></button></div><div className="detail-section"><h3>Conversation</h3><button onClick={() => toastIt('End-to-end encryption is enabled for this conversation')}><span>🔐</span>End-to-end encryption <b>On</b></button><button onClick={() => toastIt('Disappearing messages settings opened')}><span>⌁</span>Disappearing messages <b>Off</b></button><button onClick={() => toastIt('Photos, videos & files opened')}><span>▧</span>Photos, videos & files <b>›</b></button><button onClick={() => toastIt('Keyboard shortcuts: Ctrl/⌘ K focuses search; Enter sends messages')}><span>◫</span>Keyboard shortcuts <b>›</b></button></div><div className="server-badge"><span>SECURE SERVER</span><strong>MessengerPro</strong><p>Private, realtime and self-hosted.</p><button onClick={() => toastIt(connected ? 'Realtime server connection is healthy' : 'Connect the MessengerPro server to enable realtime')}</button></div></aside>}
+    {!showDetails && <button className="show-details" onClick={() => setShowDetails(true)}>‹</button>}
+
+    {modal === 'menu' && <Modal title="Account menu" onClose={() => setModal(null)}><div className="gm-menu"><button onClick={() => { setModal(null); toastIt(`Signed in as ${account?.name || 'Demo User'}`); }}>♙ Account & profile</button><button onClick={() => { setModal(null); toastIt('Status set to Online'); }}>● Online status</button><button onClick={() => { setModal(null); setShowDetails(true); }}>⚙ Settings</button><button className="danger" onClick={() => { setModal(null); signOut(); }}>↪ Sign out</button></div></Modal>}
+    {modal === 'new' && <Modal title="Start a new conversation" onClose={() => setModal(null)}><label className="gm-label">Username, email or mobile number</label><input className="gm-field" value={newTarget} onChange={(e) => setNewTarget(e.target.value)} placeholder="Search a person"/><button className="login-button" style={{marginTop:12}} onClick={() => { if (!newTarget.trim()) return toastIt('Enter a person to continue'); const found = conversations.find((c) => c.name.toLowerCase().includes(newTarget.toLowerCase()) || c.id === newTarget.toLowerCase()); setModal(null); if (found) openConversation(found.id); else toastIt(`Invite/search request sent for ${newTarget}`); }}>Continue</button></Modal>}
+    {modal === 'call' && <Modal title={`${callType} call`} onClose={() => setModal(null)}><div className="call-card"><Avatar item={active} size="huge"/><h3>{active.name}</h3><p>{callType} call ready</p><button className="login-button" onClick={() => toastIt(`${callType} call started with ${active.name}`)}>Start {callType} Call</button></div></Modal>}
+    {modal === 'help' && <Modal title="Help & Support" onClose={() => setModal(null)}><div className="gm-menu"><button onClick={() => toastIt('MessengerPro quick start: create an account, open a chat and send a message.')}>▣ Quick start</button><button onClick={() => toastIt('Connection status: ' + (connected ? 'connected' : 'demo/offline'))}>⌁ Connection diagnostics</button><button onClick={() => window.open('https://github.com/Narsing-s/MessengerPro/issues','_blank')}>? Report an issue</button></div></Modal>}
+    {modal === 'action' && <Modal title="Options" onClose={() => setModal(null)}><div className="gm-menu"><button onClick={() => { setModal(null); toastIt('Conversation search opened'); searchRef.current?.focus(); }}>⌕ Search in conversation</button><button onClick={() => { setModal(null); setMuted((v) => !v); }}>♩ {muted ? 'Unmute conversation' : 'Mute conversation'}</button><button onClick={() => { setModal(null); toastIt('Conversation details refreshed'); }}>↻ Refresh details</button><button className="danger" onClick={() => { setModal(null); toastIt('Conversation delete requires confirmation in the production backend'); }}>⌫ Delete conversation</button></div></Modal>}
+    {toast && <div className="gm-toast">{toast}</div>}
+  </main>;
 }
