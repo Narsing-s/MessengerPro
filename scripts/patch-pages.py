@@ -30,7 +30,7 @@ login_replacement = r'''async function submitLogin() {
     const accounts = getAccounts(); const key = value.trim().toLowerCase(); const account = accounts.find((a) => (mode === 'email' ? a.email.toLowerCase() === key : mode === 'username' ? a.username.toLowerCase() === key : a.phone === value.replace(/\D/g, '')) && a.password === password);
     if (!account) return setNotice('Invalid credentials. Check your details or use Forgot password.'); localStorage.setItem('messengerpro.account', JSON.stringify(account)); localStorage.setItem('messengerpro.session', 'true'); onLogin(account);
   }'''
-s, n = re.subn(login_pattern, login_replacement, s, count=1, flags=re.S)
+s, n = re.subn(login_pattern, lambda _m: login_replacement, s, count=1, flags=re.S)
 if n != 1: raise SystemExit('submitLogin function not found')
 
 register_pattern = r"function createAccount\(\) \{.*?\n  \}"
@@ -48,7 +48,7 @@ register_replacement = r'''async function createAccount() {
     } catch {}
     const accounts = getStoredAccounts(); if (accounts.some((a) => a.username.toLowerCase() === account.username.toLowerCase())) return setNotice('That username is already in use.'); if (accounts.some((a) => a.email.toLowerCase() === account.email.toLowerCase())) return setNotice('That email is already in use.'); if (accounts.some((a) => a.phone === account.phone)) return setNotice('That mobile number is already in use.'); localStorage.setItem('messengerpro.accounts', JSON.stringify([...accounts, account])); localStorage.setItem('messengerpro.account', JSON.stringify(account)); localStorage.setItem('messengerpro.session', 'true'); setNotice('Account created successfully. Opening your Messenger workspace…'); setTimeout(() => onLogin(account), 500);
   }'''
-s, n = re.subn(register_pattern, register_replacement, s, count=1, flags=re.S)
+s, n = re.subn(register_pattern, lambda _m: register_replacement, s, count=1, flags=re.S)
 if n != 1: raise SystemExit('createAccount function not found')
 
 state_marker = "const [loggedIn, setLoggedIn] = useState(false); const [account, setAccount] = useState<Account | null>(null);"
@@ -66,8 +66,10 @@ if "apiFetch(`/api/users/search" not in s:
 
 old_dir = re.compile(r"const registeredAccounts = .*?const availableContacts: Conversation\[\] = registeredAccounts;", re.S)
 new_dir = "const registeredAccounts: Conversation[] = directory.length ? directory : getStoredAccounts().filter((a) => a.username.toLowerCase() !== account?.username.toLowerCase()).map((a) => ({ id: a.username, name: a.name, preview: 'Start a conversation', time: '', online: true, initials: a.name.split(/\\s+/).map((v) => v[0]).join('').slice(0,2).toUpperCase(), color: 'blue' as const })); const availableContacts: Conversation[] = registeredAccounts;"
-s, n = old_dir.subn(new_dir, s, count=1)
+s, n = old_dir.subn(lambda _m: new_dir, s, count=1)
 if n != 1: s = s.replace("const availableContacts = sampleContacts;", new_dir, 1)
 
-s = s.replace("const apiBase = getApiBase(); const wsUrl = apiBase ? apiBase.replace(/^http/, 'ws') + `/ws?userId=${encodeURIComponent(userId)}` : `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?userId=${encodeURIComponent(userId)}`;", "const apiBase = getApiBase(); const wsUrl = apiBase ? apiBase.replace(/^http/, 'ws') + `/ws?userId=${encodeURIComponent(userId)}` : `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?userId=${encodeURIComponent(userId)}`;", 1)
+old_ws = "const protocol = location.protocol === 'https:' ? 'wss' : 'ws'; try { const ws = new WebSocket(`${protocol}://${location.host}/ws?userId=${encodeURIComponent(userId)}`);"
+new_ws = "const apiBase = getApiBase(); const wsUrl = apiBase ? apiBase.replace(/^http/, 'ws') + `/ws?userId=${encodeURIComponent(userId)}` : `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?userId=${encodeURIComponent(userId)}`; try { const ws = new WebSocket(wsUrl);"
+s = s.replace(old_ws, new_ws, 1)
 p.write_text(s)
