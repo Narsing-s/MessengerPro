@@ -19,7 +19,6 @@ if 'const getApiBase = () =>' not in s:
     if marker not in s: raise SystemExit('Account type marker missing')
     s = s.replace(marker, marker + helpers, 1)
 
-login_pattern = r"function submitLogin\(\) \{.*?\n  \}"
 login_replacement = r'''async function submitLogin() {
     if (!value.trim() || !password) return setNotice('Enter your login details.');
     try {
@@ -29,11 +28,13 @@ login_replacement = r'''async function submitLogin() {
     } catch {}
     const accounts = getAccounts(); const key = value.trim().toLowerCase(); const account = accounts.find((a) => (mode === 'email' ? a.email.toLowerCase() === key : mode === 'username' ? a.username.toLowerCase() === key : a.phone === value.replace(/\D/g, '')) && a.password === password);
     if (!account) return setNotice('Invalid credentials. Check your details or use Forgot password.'); localStorage.setItem('messengerpro.account', JSON.stringify(account)); localStorage.setItem('messengerpro.session', 'true'); onLogin(account);
-  }'''
-s, n = re.subn(login_pattern, lambda _m: login_replacement, s, count=1, flags=re.S)
-if n != 1: raise SystemExit('submitLogin function not found')
+  }
+'''
+start = s.find('function submitLogin() {')
+end = s.find('function createAccount() {', start)
+if start < 0 or end < 0: raise SystemExit('submitLogin boundaries not found')
+s = s[:start] + login_replacement + s[end:]
 
-register_pattern = r"function createAccount\(\) \{.*?\n  \}"
 register_replacement = r'''async function createAccount() {
     if (!name.trim() || !username.trim() || !email.trim() || !phone.trim() || !password || !confirmPassword) return setNotice('Please complete all required details.');
     if (!/^\S+@\S+\.\S+$/.test(email)) return setNotice('Enter a valid email address.');
@@ -47,9 +48,12 @@ register_replacement = r'''async function createAccount() {
       const data = await response.json().catch(() => ({})); if (response.status !== 404) return setNotice(data.error || 'Unable to create account.');
     } catch {}
     const accounts = getStoredAccounts(); if (accounts.some((a) => a.username.toLowerCase() === account.username.toLowerCase())) return setNotice('That username is already in use.'); if (accounts.some((a) => a.email.toLowerCase() === account.email.toLowerCase())) return setNotice('That email is already in use.'); if (accounts.some((a) => a.phone === account.phone)) return setNotice('That mobile number is already in use.'); localStorage.setItem('messengerpro.accounts', JSON.stringify([...accounts, account])); localStorage.setItem('messengerpro.account', JSON.stringify(account)); localStorage.setItem('messengerpro.session', 'true'); setNotice('Account created successfully. Opening your Messenger workspace…'); setTimeout(() => onLogin(account), 500);
-  }'''
-s, n = re.subn(register_pattern, lambda _m: register_replacement, s, count=1, flags=re.S)
-if n != 1: raise SystemExit('createAccount function not found')
+  }
+'''
+start = s.find('function createAccount() {')
+end = s.find('function requestReset() {', start)
+if start < 0 or end < 0: raise SystemExit('createAccount boundaries not found')
+s = s[:start] + register_replacement + s[end:]
 
 state_marker = "const [loggedIn, setLoggedIn] = useState(false); const [account, setAccount] = useState<Account | null>(null);"
 if 'const [directory, setDirectory]' not in s:
