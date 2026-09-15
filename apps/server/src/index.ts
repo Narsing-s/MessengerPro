@@ -2,7 +2,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
 import { Pool } from 'pg';
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 
 const port = Number(process.env.PORT ?? 4000);
@@ -65,7 +65,7 @@ app.get('/api/messages/:username', async (request) => {
   const username = String((request.params as { username: string }).username);
   const me = String((request.query as { me?: string }).me ?? '');
   if (!me) return { messages: [] };
-  const result = await pool.query(`select id, sender_id, recipient_id, body, client_message_id, created_at from messages where (sender_id=$1 and recipient_id=$2) or (sender_id=$2 and recipient_id=$1) order by created_at asc limit 1000`, [me, username]);
+  const result = await pool.query(`select id, sender_id, recipient_id, body, client_message_id, created_at, read_at from messages where (sender_id=$1 and recipient_id=$2) or (sender_id=$2 and recipient_id=$1) order by created_at asc limit 1000`, [me, username]);
   return { messages: result.rows };
 });
 
