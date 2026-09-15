@@ -56,7 +56,7 @@ jobs:
           from pathlib import Path
           s = Path('app/page.tsx').read_text()
           bad = "const availableContacts = sampleContacts; const active = useMemo(() => availableContacts.find((c) => c.id === recipient), [recipient]); const filtered = useMemo(() =>"
-          good = "const availableContacts = sampleContacts; const active = availableContacts.find((c) => c.id === recipient); const filtered = availableContacts.filter(() =>"
+          good = "const availableContacts = sampleContacts; const active = availableContacts.find((c) => c.id === recipient); const filtered = availableContacts.filter((c) =>"
           if bad in s:
               raise SystemExit('Conditional useMemo dashboard bug is still present')
           if good not in s:
