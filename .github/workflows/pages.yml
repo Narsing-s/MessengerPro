@@ -33,6 +33,24 @@ jobs:
         working-directory: apps/web
         run: npm install
 
+      # The dashboard previously called useMemo conditionally after the login
+      # early-return. React then crashed on the first authenticated render.
+      # Convert those two derived values to ordinary calculations for the
+      # static demo build. This does not change the UI or authentication flow.
+      - name: Fix authenticated dashboard render
+        working-directory: apps/web
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('app/page.tsx')
+          s = p.read_text()
+          old = "const availableContacts = sampleContacts; const active = useMemo(() => availableContacts.find((c) => c.id === recipient), [recipient]); const filtered = useMemo(() => { const value = search.trim().toLowerCase(); return availableContacts.filter((c) => !value || `${c.name}`.toLowerCase().includes(value)); }, [search]);"
+          new = "const availableContacts = sampleContacts; const active = availableContacts.find((c) => c.id === recipient); const filtered = availableContacts.filter((c) => { const value = search.trim().toLowerCase(); return !value || `${c.name}`.toLowerCase().includes(value); });"
+          if old not in s:
+              raise SystemExit('Expected dashboard calculation was not found; refusing to build an unverified Pages bundle.')
+          p.write_text(s.replace(old, new, 1))
+          PY
+
       - name: Build static Next.js site
         working-directory: apps/web
         env:
