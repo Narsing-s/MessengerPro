@@ -3,6 +3,7 @@ name: MessengerPro Pages Demo
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -17,27 +18,46 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Install
+
+      - name: Install dependencies
         working-directory: apps/web
         run: npm install
-      - name: Build static demo
+
+      - name: Build static Next.js site
         working-directory: apps/web
         env:
           GITHUB_PAGES: true
         run: npm run build
-      - uses: actions/upload-pages-artifact@v3
+
+      - name: Verify static output
+        run: |
+          test -f apps/web/out/index.html
+          test -f apps/web/out/404.html
+          echo "GitHub Pages output verified"
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
         with:
           path: apps/web/out
+
   deploy:
+    name: Deploy to GitHub Pages
+    runs-on: ubuntu-latest
+    needs: build
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    needs: build
     steps:
-      - id: deployment
+      - name: Deploy
+        id: deployment
         uses: actions/deploy-pages@v4
