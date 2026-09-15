@@ -26,41 +26,79 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Persist React dashboard fix in source
+      - name: Fix account directory and username search in source
         run: |
           python - <<'PY'
           from pathlib import Path
           p = Path('apps/web/app/page.tsx')
           s = p.read_text()
-          old = "const availableContacts = sampleContacts; const active = useMemo(() => availableContacts.find((c) => c.id === recipient), [recipient]); const filtered = useMemo(() => { const value = search.trim().toLowerCase(); return availableContacts.filter((c) => !value || `${c.name}`.toLowerCase().includes(value)); }, [search]);"
-          new = "const availableContacts = sampleContacts; const active = availableContacts.find((c) => c.id === recipient); const filtered = availableContacts.filter((c) => { const value = search.trim().toLowerCase(); return !value || `${c.name}`.toLowerCase().includes(value); });"
-          if old in s:
-              p.write_text(s.replace(old, new, 1))
+
+          old = "  const getAccount = (): Account | null => { try { return JSON.parse(localStorage.getItem('messengerpro.account') || 'null'); } catch { return null; } };"
+          new = "  const getAccounts = (): Account[] => { try { const stored = JSON.parse(localStorage.getItem('messengerpro.accounts') || '[]'); if (Array.isArray(stored) && stored.length) return stored; const legacy = JSON.parse(localStorage.getItem('messengerpro.account') || 'null'); return legacy ? [legacy] : []; } catch { return []; } }; const getAccount = (): Account | null => { const accounts = getAccounts(); const session = (() => { try { return JSON.parse(localStorage.getItem('messengerpro.account') || 'null'); } catch { return null; } })(); return accounts.find((a) => session && a.username.toLowerCase() === String(session.username || '').toLowerCase()) || session || accounts[0] || null; }; const saveAccounts = (accounts: Account[]) => { localStorage.setItem('messengerpro.accounts', JSON.stringify(accounts)); };"
+          if old not in s: raise SystemExit('account helper not found')
+          s = s.replace(old, new, 1)
+
+          old = "  function submitLogin() { const account = getAccount(); if (!value.trim() || !password) return setNotice('Enter your login details.'); if (!account) return setNotice('No account found. Select Create Free Account first.'); const matches = mode === 'email' ? account.email.toLowerCase() === value.trim().toLowerCase() : mode === 'username' ? account.username.toLowerCase() === value.trim().toLowerCase() : account.phone === value.replace(/\\D/g, ''); if (!matches || account.password !== password) return setNotice('Invalid credentials. Check your details or use Forgot password.'); if (remember) localStorage.setItem('messengerpro.remember', 'true'); onLogin(account); }"
+          new = "  function submitLogin() { const accounts = getAccounts(); if (!value.trim() || !password) return setNotice('Enter your login details.'); const key = value.trim().toLowerCase(); const account = accounts.find((a) => (mode === 'email' ? a.email.toLowerCase() === key : mode === 'username' ? a.username.toLowerCase() === key : a.phone === value.replace(/\\D/g, '')) && a.password === password); if (!account) return setNotice('Invalid credentials. Check your details or use Forgot password.'); localStorage.setItem('messengerpro.account', JSON.stringify(account)); localStorage.setItem('messengerpro.session', 'true'); if (remember) localStorage.setItem('messengerpro.remember', 'true'); onLogin(account); }"
+          if old not in s: raise SystemExit('login function not found')
+          s = s.replace(old, new, 1)
+
+          old = "  function createAccount() { if (!name.trim() || !username.trim() || !email.trim() || !phone.trim() || !password || !confirmPassword) return setNotice('Please complete all required details.'); if (!/^\\S+@\\S+\\.\\S+$/.test(email)) return setNotice('Enter a valid email address.'); if (phone.replace(/\\D/g, '').length < 10) return setNotice('Enter a valid 10-digit mobile number.'); if (password.length < 8) return setNotice('Password must contain at least 8 characters.'); if (password !== confirmPassword) return setNotice('Passwords do not match.'); const account = { name: name.trim(), username: username.trim(), email: email.trim(), phone: phone.replace(/\\D/g, '').slice(-10), password }; localStorage.setItem('messengerpro.account', JSON.stringify(account)); localStorage.setItem('messengerpro.session', 'true'); setNotice('Account created successfully. Opening your Messenger workspace…'); setTimeout(() => onLogin(account), 500); }"
+          new = "  function createAccount() { if (!name.trim() || !username.trim() || !email.trim() || !phone.trim() || !password || !confirmPassword) return setNotice('Please complete all required details.'); if (!/^\\S+@\\S+\\.\\S+$/.test(email)) return setNotice('Enter a valid email address.'); if (phone.replace(/\\D/g, '').length < 10) return setNotice('Enter a valid 10-digit mobile number.'); if (password.length < 8) return setNotice('Password must contain at least 8 characters.'); if (password !== confirmPassword) return setNotice('Passwords do not match.'); const account = { name: name.trim(), username: username.trim(), email: email.trim(), phone: phone.replace(/\\D/g, '').slice(-10), password }; const accounts = getAccounts(); if (accounts.some((a) => a.username.toLowerCase() === account.username.toLowerCase())) return setNotice('That username is already in use.'); if (accounts.some((a) => a.email.toLowerCase() === account.email.toLowerCase())) return setNotice('That email is already in use.'); if (accounts.some((a) => a.phone === account.phone)) return setNotice('That mobile number is already in use.'); saveAccounts([...accounts, account]); localStorage.setItem('messengerpro.account', JSON.stringify(account)); localStorage.setItem('messengerpro.session', 'true'); setNotice('Account created successfully. Opening your Messenger workspace…'); setTimeout(() => onLogin(account), 500); }"
+          if old not in s: raise SystemExit('create function not found')
+          s = s.replace(old, new, 1)
+
+          old = "  function requestReset() { const account = getAccount(); if (!value.trim()) return setNotice('Enter the email address, username or mobile number on your account.'); const key = value.trim().toLowerCase(); const matches = account && (account.email.toLowerCase() === key || account.username.toLowerCase() === key || account.phone === value.replace(/\\D/g, '')); if (!matches) return setNotice('We could not find an account with those details.'); localStorage.setItem('messengerpro.reset.pending', 'true'); setNotice('Identity verified for this demo. Create a new password below.'); setAuthView('reset'); }"
+          new = "  function requestReset() { const accounts = getAccounts(); if (!value.trim()) return setNotice('Enter the email address, username or mobile number on your account.'); const key = value.trim().toLowerCase(); const account = accounts.find((a) => a.email.toLowerCase() === key || a.username.toLowerCase() === key || a.phone === value.replace(/\\D/g, '')); if (!account) return setNotice('We could not find an account with those details.'); localStorage.setItem('messengerpro.reset.pending', 'true'); localStorage.setItem('messengerpro.reset.username', account.username); setNotice('Identity verified for this demo. Create a new password below.'); setAuthView('reset'); }"
+          if old not in s: raise SystemExit('reset request not found')
+          s = s.replace(old, new, 1)
+
+          old = "  function completeReset() { const account = getAccount(); if (!account) return setNotice('No account is available to reset.'); if (resetPassword.length < 8) return setNotice('New password must contain at least 8 characters.'); if (resetPassword !== resetConfirm) return setNotice('Passwords do not match.'); localStorage.setItem('messengerpro.account', JSON.stringify({ ...account, password: resetPassword })); localStorage.removeItem('messengerpro.reset.pending'); setPassword(''); setResetPassword(''); setResetConfirm(''); setNotice('Password reset successfully. You can now sign in.'); setAuthView('login'); }"
+          new = "  function completeReset() { const username = localStorage.getItem('messengerpro.reset.username') || ''; const accounts = getAccounts(); const account = accounts.find((a) => a.username.toLowerCase() === username.toLowerCase()) || getAccount(); if (!account) return setNotice('No account is available to reset.'); if (resetPassword.length < 8) return setNotice('New password must contain at least 8 characters.'); if (resetPassword !== resetConfirm) return setNotice('Passwords do not match.'); const updated = accounts.map((a) => a.username.toLowerCase() === account.username.toLowerCase() ? { ...a, password: resetPassword } : a); saveAccounts(updated); localStorage.setItem('messengerpro.account', JSON.stringify({ ...account, password: resetPassword })); localStorage.removeItem('messengerpro.reset.pending'); localStorage.removeItem('messengerpro.reset.username'); setPassword(''); setResetPassword(''); setResetConfirm(''); setNotice('Password reset successfully. You can now sign in.'); setAuthView('login'); }"
+          if old not in s: raise SystemExit('reset completion not found')
+          s = s.replace(old, new, 1)
+
+          old = "  const [loggedIn, setLoggedIn] = useState(false); const [account, setAccount] = useState<Account | null>(null); const [userId] = useState('you');"
+          new = "  const [loggedIn, setLoggedIn] = useState(false); const [account, setAccount] = useState<Account | null>(null); const userId = account?.username || 'anonymous';"
+          if old not in s: raise SystemExit('user id state not found')
+          s = s.replace(old, new, 1)
+
+          old = "  const availableContacts = sampleContacts; const active = availableContacts.find((c) => c.id === recipient); const filtered = availableContacts.filter((c) => { const value = search.trim().toLowerCase(); return !value || `${c.name}`.toLowerCase().includes(value); });"
+          new = "  const registeredAccounts = getAccounts().filter((a) => a.username.toLowerCase() !== account?.username.toLowerCase()).map((a) => ({ id: a.username, name: a.name, username: a.username, email: a.email, phone: a.phone, preview: 'Start a conversation', time: '', online: true, initials: a.name.split(/\\s+/).map((v) => v[0]).join('').slice(0,2).toUpperCase(), color: 'blue' as const })); const availableContacts: Conversation[] = registeredAccounts; const active = availableContacts.find((c) => c.id === recipient); const filtered = availableContacts.filter((c) => { const value = search.trim().toLowerCase(); return !value || `${c.name} ${c.id}`.toLowerCase().includes(value); });"
+          if old not in s: raise SystemExit('contacts calculation not found')
+          s = s.replace(old, new, 1)
+
+          old = "const found=availableContacts.find(c=>c.name.toLowerCase().includes(newTarget.toLowerCase())||c.id===newTarget.toLowerCase());"
+          new = "const key=newTarget.trim().toLowerCase(); const found=availableContacts.find(c=>c.name.toLowerCase().includes(key)||c.id.toLowerCase()===key||('email' in c && c.email.toLowerCase()===key)||('phone' in c && c.phone===newTarget.replace(/\\D/g,'')));"
+          if old not in s: raise SystemExit('new conversation search not found')
+          s = s.replace(old, new, 1)
+
+          p.write_text(s)
           PY
           if git diff --quiet -- apps/web/app/page.tsx; then
-            echo 'React dashboard fix already present in source.'
+            echo 'Account directory fix already present.'
           else
             git config user.name 'github-actions[bot]'
             git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
             git add apps/web/app/page.tsx
-            git commit -m 'Fix dashboard render hooks in source'
+            git commit -m 'Fix multi-account username search'
             git push
           fi
       - name: Install dependencies
         working-directory: apps/web
         run: npm install
-      - name: Verify dashboard render fix
+      - name: Verify account search fix
         working-directory: apps/web
         run: |
           python - <<'PY'
           from pathlib import Path
           s = Path('app/page.tsx').read_text()
-          bad = "const availableContacts = sampleContacts; const active = useMemo(() => availableContacts.find((c) => c.id === recipient), [recipient]); const filtered = useMemo(() =>"
-          good = "const availableContacts = sampleContacts; const active = availableContacts.find((c) => c.id === recipient); const filtered = availableContacts.filter((c) =>"
-          if bad in s:
-              raise SystemExit('Conditional useMemo dashboard bug is still present')
-          if good not in s:
-              raise SystemExit('Expected dashboard calculation fix is missing')
+          required = ['messengerpro.accounts', 'saveAccounts', 'registeredAccounts', 'userId = account?.username']
+          for item in required:
+              if item not in s:
+                  raise SystemExit(f'Missing account search fix: {item}')
+          if 'const availableContacts = sampleContacts;' in s:
+              raise SystemExit('Fake sample contacts are still the live contact directory')
           PY
       - name: Build static Next.js site
         working-directory: apps/web
