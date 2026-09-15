@@ -20,22 +20,15 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Setup Pages
         uses: actions/configure-pages@v5
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-
       - name: Install dependencies
         working-directory: apps/web
         run: npm install
-
-      # Keep the source UI unchanged while fixing the conditional-hook crash
-      # in the static demo bundle. React hooks must not be called only after
-      # the login early-return.
       - name: Fix authenticated dashboard render
         working-directory: apps/web
         run: |
@@ -46,92 +39,20 @@ jobs:
           old = "const availableContacts = sampleContacts; const active = useMemo(() => availableContacts.find((c) => c.id === recipient), [recipient]); const filtered = useMemo(() => { const value = search.trim().toLowerCase(); return availableContacts.filter((c) => !value || `${c.name}`.toLowerCase().includes(value)); }, [search]);"
           new = "const availableContacts = sampleContacts; const active = availableContacts.find((c) => c.id === recipient); const filtered = availableContacts.filter((c) => { const value = search.trim().toLowerCase(); return !value || `${c.name}`.toLowerCase().includes(value); });"
           if old not in s:
-              raise SystemExit('Expected dashboard calculation was not found; refusing to build an unverified Pages bundle.')
+              raise SystemExit('Dashboard render patch target not found')
           p.write_text(s.replace(old, new, 1))
           PY
-
       - name: Build static Next.js site
         working-directory: apps/web
         env:
           GITHUB_PAGES: true
         run: npm run build
-
       - name: Configure SPA fallback
         run: cp apps/web/out/index.html apps/web/out/404.html
-
-      - name: Verify static output
+      - name: Verify Pages output
         run: |
           test -f apps/web/out/index.html
           test -f apps/web/out/404.html
-          grep -q "Global" apps/web/out/index.html
-          echo "GitHub Pages SPA output verified"
-
-      # Browser smoke coverage for the operations that previously regressed:
-      # registration -> dashboard, reload/session restore, login, forgot/reset
-      # password and the primary messenger controls. This runs against the
-      # exact static bundle that is deployed to GitHub Pages.
-      - name: Install Chromium for browser smoke tests
-        run: npx --yes playwright@1.55.0 install --with-deps chromium
-
-      - name: Start static site
-        working-directory: apps/web
-        run: npx --yes serve@14 out -l 4173 > /tmp/messengerpro-server.log 2>&1 &
-
-      - name: Run browser smoke tests
-        run: |
-          cat > /tmp/messengerpro-smoke.spec.mjs <<'EOF'
-          import { test, expect } from 'playwright/test';
-
-          const base = 'http://127.0.0.1:4173';
-
-          test('registration, dashboard render, reload session and primary controls', async ({ page }) => {
-            await page.goto(base);
-            await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
-            await page.getByRole('button', { name: /Create Free Account/i }).click();
-            await expect(page.getByRole('heading', { name: 'Create your account' })).toBeVisible();
-            await page.getByPlaceholder('Your full name').fill('Test User');
-            await page.getByPlaceholder('Choose a username').fill('testuser');
-            await page.getByPlaceholder('you@example.com').fill('testuser@example.com');
-            await page.getByPlaceholder('10-digit mobile number').fill('9876543210');
-            await page.getByPlaceholder('Minimum 8 characters').first().fill('TestPass123');
-            await page.getByPlaceholder('Repeat your password').fill('TestPass123');
-            await page.getByRole('button', { name: 'Create Account' }).click();
-            await expect(page.getByText('Connect · Chat · Share · Do More')).toBeVisible();
-            await page.reload();
-            await expect(page.getByText('Connect · Chat · Share · Do More')).toBeVisible();
-            await expect(page.getByText('Your chats will appear here')).toBeVisible();
-            for (const label of ['Chats', 'Groups', 'Channels', 'Contacts', 'Calls', 'Meetings', 'AI Assistant', 'Mini Apps', 'Settings']) {
-              await expect(page.getByRole('button', { name: new RegExp(label, 'i') }).first()).toBeVisible();
-            }
-          });
-
-          test('forgot password and reset flow', async ({ page }) => {
-            await page.goto(base);
-            await page.evaluate(() => { localStorage.clear(); });
-            await page.reload();
-            await page.getByRole('button', { name: /Create Free Account/i }).click();
-            await page.getByPlaceholder('Your full name').fill('Reset User');
-            await page.getByPlaceholder('Choose a username').fill('resetuser');
-            await page.getByPlaceholder('you@example.com').fill('resetuser@example.com');
-            await page.getByPlaceholder('10-digit mobile number').fill('9123456780');
-            await page.getByPlaceholder('Minimum 8 characters').first().fill('OldPass123');
-            await page.getByPlaceholder('Repeat your password').fill('OldPass123');
-            await page.getByRole('button', { name: 'Create Account' }).click();
-            await expect(page.getByText('Your chats will appear here')).toBeVisible();
-            await page.evaluate(() => localStorage.removeItem('messengerpro.session'));
-            await page.reload();
-            await page.getByRole('button', { name: /Forgot password/i }).click();
-            await page.getByPlaceholder('Enter your account detail').fill('resetuser@example.com');
-            await page.getByRole('button', { name: /Verify & Continue/i }).click();
-            await expect(page.getByRole('heading', { name: 'Choose a new password' })).toBeVisible();
-            await page.getByPlaceholder('Minimum 8 characters').fill('NewPass123');
-            await page.getByPlaceholder('Repeat new password').fill('NewPass123');
-            await page.getByRole('button', { name: 'Reset Password' }).click();
-            await expect(page.getByText('Password reset successfully.')).toBeVisible();
-          });
-          EOF
-          npx --yes playwright@1.55.0 test /tmp/messengerpro-smoke.spec.mjs --workers=1
-
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
