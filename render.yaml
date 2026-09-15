@@ -3,7 +3,7 @@ services:
     name: messengerpro-api
     runtime: docker
     dockerfilePath: ./apps/server/Dockerfile
-    dockerContext: .
+    dockerContext: ./apps/server
     healthCheckPath: /api/health
     autoDeploy: true
     envVars:
