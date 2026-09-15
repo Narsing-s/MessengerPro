@@ -3,6 +3,11 @@ import re
 
 p = Path('apps/web/app/page.tsx')
 s = p.read_text()
+
+# Always normalize corruption from any previously generated page before applying patches.
+# This makes the Vercel prebuild safe even when the checked-in page came from an older patch run.
+s = re.sub(r'\basync(?:\s+async)+\s+function\s+(submitLogin|createAccount)\s*\(\)', r'async function \1()', s)
+
 marker = "type Account = { name: string; username: string; email: string; phone: string; password: string };"
 helpers = r'''
 
@@ -87,7 +92,6 @@ s = s.replace(old_ws, new_ws, 1)
 s = s.replace('c.email.toLowerCase()', 'String(c.email).toLowerCase()')
 s = s.replace('a.email.toLowerCase()', 'String(a.email).toLowerCase()')
 
-# Final safety normalization: repeated runs can never leave "async async ... function" behind.
-s = re.sub(r'\b(?:async\s+){2,}function\s+(submitLogin|createAccount)\s*\(', r'async function \1(', s)
-
+# Final invariant: generated page must never contain repeated async prefixes.
+s = re.sub(r'\basync(?:\s+async)+\s+function\s+(submitLogin|createAccount)\s*\(\)', r'async function \1()', s)
 p.write_text(s)
