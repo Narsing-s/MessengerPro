@@ -1,0 +1,40 @@
+name: Sync MessengerPro web client for Vercel
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-vercel-client
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    if: ${{ !contains(github.event.head_commit.message, '[skip vercel sync]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Apply production account and messaging client patch
+        run: python scripts/patch-pages.py
+      - name: Commit generated client
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/web/app/page.tsx
+          if git diff --cached --quiet; then
+            echo 'No generated client changes.'
+            exit 0
+          fi
+          git commit -m 'chore: sync Vercel client with real account operations [skip vercel sync]'
+          git push
