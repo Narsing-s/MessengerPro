@@ -39,11 +39,17 @@ jobs:
           GITHUB_PAGES: true
         run: npm run build
 
+      # GitHub Pages serves 404.html for any URL it cannot resolve.
+      # Use the exported app shell there so accidental client-side navigation
+      # or a stale URL never strands the SPA on a GitHub 404 page.
+      - name: Configure SPA fallback
+        run: cp apps/web/out/index.html apps/web/out/404.html
+
       - name: Verify static output
         run: |
           test -f apps/web/out/index.html
           test -f apps/web/out/404.html
-          echo "GitHub Pages output verified"
+          echo "GitHub Pages SPA output verified"
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
